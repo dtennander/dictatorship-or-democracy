@@ -1,56 +1,63 @@
 module Main exposing (..)
 
 import Browser
-import Html exposing (Html, text, div, h1, img)
-import Html.Attributes exposing (src)
+import Html exposing (Html, text, div, h1)
+import Page.Question as Question
+import Page.StartPage as StartPage
 
 
 ---- MODEL ----
 
+type Model =
+      StartPage String
+    | Question Question.Model
 
-type alias Model =
-    {}
 
-
-init : ( Model, Cmd Msg )
-init =
-    ( {}, Cmd.none )
-
+init : {country: String, showDash: Bool} -> ( Model, Cmd Msg )
+init flags = if flags.showDash
+    then (StartPage flags.country, Cmd.none)
+    else Question.init flags.country
+        |> updateWith Question GotQuestionMsg
 
 
 ---- UPDATE ----
 
-
 type Msg
-    = NoOp
-
+    = StartGame
+    | GotQuestionMsg Question.Msg
 
 update : Msg -> Model -> ( Model, Cmd Msg )
-update msg model =
-    ( model, Cmd.none )
+update msg model = case (model, msg) of
+    (StartPage c, StartGame) ->
+        Question.init c
+            |> updateWith Question GotQuestionMsg
+    (Question question, GotQuestionMsg qMsg) ->
+        Question.update qMsg question
+            |> updateWith Question GotQuestionMsg
+    (_,_) -> (model, Cmd.none)
 
+updateWith : (subModel -> Model) ->
+             (subMsg -> Msg) ->
+             ( subModel, Cmd subMsg ) -> ( Model, Cmd Msg )
+updateWith toModel toMsg ( subModel, subCmd ) = (toModel subModel, Cmd.map toMsg subCmd)
 
 
 ---- VIEW ----
 
-
 view : Model -> Html Msg
-view model =
-    div []
-        [ img [ src "/logo.svg" ] []
-        , h1 [] [ text "Your Elm App is working!" ]
-        ]
-
+view model = case model of
+    StartPage _-> StartPage.view StartGame
+    Question m -> Question.view m |> Html.map GotQuestionMsg
 
 
 ---- PROGRAM ----
 
 
-main : Program () Model Msg
+main : Program {country: String, showDash: Bool} Model Msg
 main =
     Browser.element
         { view = view
-        , init = \_ -> init
+        , init = init
         , update = update
         , subscriptions = always Sub.none
         }
