@@ -1,0 +1,18 @@
+{
+  "name": "dict-or-dem",
+  "version": "1.0.0",
+  "description": "A web app for trying to guess if the country is a democracy or dictatorship",
+  "repository": "github.com/dtennander/dict-or-dem",
+  "author": "David Tennander",
+  "license": "MIT",
+  "scripts": {
+    "build": "elm-app build",
+    "start": "elm-app start",
+    "install": "elm-app install",
+    "test": "elm-app test",
+    "repl": "elm-app repl"
+  },
+  "dependencies": {
+    "create-elm-app": "^4.2.26"
+  }
+}
