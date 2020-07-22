@@ -1,35 +1,14 @@
 module API.Countries exposing (
-    Country,
-    parseCountryCode,
-    iso2Code,
-
     Time(..),
     getCountryName,
     getCountryGDP,
     getCountryRuralPop
- , getSchoolEnrolment, getCO2PerCapita)
+ , getSchoolEnrolment, getCO2PerCapita, getPoliticalData, FreedomStatus(..))
 
+import API.Codes exposing (Country, iso2Code, iso3Code)
 import Http
-import Json.Decode as Decode exposing (Decoder, field, float, index, list, maybe, string)
+import Json.Decode as Decode exposing (Decoder, field, float, index, int, list, maybe, string)
 import String exposing (toInt)
-
-{-| Represents one country on Earth.
-Is created by using parseCountryCode.
--}
-type Country = CountryCode Char Char
-
-{-|Parses a string as an ISO2 country code.
-Returns a Country if it is a valid code and Nothing otherwise.
--}
-parseCountryCode : String -> Maybe Country
-parseCountryCode = String.toList >> \l -> case l of
-    [a,b] -> Just <| CountryCode a b
-    _ -> Nothing
-
-{-| Generates the ISO 2 Country code for a given country.
--}
-iso2Code : Country -> String
-iso2Code (CountryCode a b) = String.fromList [a,b]
 
 {-| Command that queries the World Bank for the full name of a Country.
     Takes a Message constructor that wll construct the sent message.
@@ -78,4 +57,28 @@ getIndicator indicator t toMsg cc =
          url = "http://api.worldbank.org/v2/country/" ++ (iso2Code cc) ++ "/indicator/"++ indicator ++"?format=json",
          expect = Http.expectJson (Result.map filter >> toMsg)
              (index 1 <| list <| Decode.map2 (\a b -> (a, b)) decodeYear (maybe <| field "value" float))
+     }
+
+type FreedomStatus =
+    Free
+    | PartlyFree
+    | NotFree
+
+getPoliticalData : (Result Http.Error FreedomStatus -> msg) -> Country -> Cmd msg
+getPoliticalData toMsg cc =
+    let
+        toStatus i = case i // 10000 of
+            1 -> Ok NotFree
+            2 -> Ok PartlyFree
+            3 -> Ok Free
+            _ -> Err <| Http.BadBody "Could not parse freedom status"
+    in Http.get {
+        url = ("https://tcdata360-backend.worldbank.org/api/v1/data?indicators=40987&countries=" ++ (iso3Code cc)),
+        expect = Http.expectJson (Result.andThen toStatus >> toMsg)
+            (field "data"
+            <| index 0
+            <| field "indicators"
+            <| index 0
+            <| field "values"
+            <| field "2018" int)
      }
