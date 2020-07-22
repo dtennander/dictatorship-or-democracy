@@ -17,10 +17,20 @@ body {
 }
 
 h1 {
+  margin-top: 1em;
   font-size: 30px;
 }
 
 img {
   margin: 20px 0;
   max-width: 200px;
+}
+
+button {
+    font-size: 0.7em;
+    background: #293c4b;
+    border-radius: 5px;
+    color: white;
+    height: 3em;
+    margin: 1em;
 }

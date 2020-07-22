@@ -96,10 +96,11 @@ viewValid d =
                 text (txt ++ ": " ++ (value |> Maybe.map toString |> Maybe.withDefault "???"))
             ]
     in div [] [
-        h1 [] [text "Is this a Dictatorship or Democracy?"],
+        h1 [] [text "Country Details"],
         stat "Rural Population [%]" d.ruralPopulation,
         stat "School Enrolment [%]" d.schoolEnrolment,
         stat "CO2 releases per Capita [Ton]" d.co2PerCapita,
+        h1 [] [text "Is it a Dictatorship or Democracy?"],
         div [] [
             button [onClick <| GotAnswer Dictatorship] [text "Dictatorship!"],
             button [onClick <| GotAnswer Democracy] [text "Democracy!"]
