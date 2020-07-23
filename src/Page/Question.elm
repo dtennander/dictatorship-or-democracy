@@ -127,9 +127,9 @@ randomChar = Random.int (Char.toCode 'A') (Char.toCode 'Z') |> Random.map Char.f
 
 fetchAll c = Cmd.batch
     [ fetchName c
-    , getIndicator "SP.RUR.TOTL.ZS" (Result.map RuralPopulation >> FetchedDatapoint) c
-    , getIndicator "SE.PRM.ENRR" (Result.map SchoolEnrolment >> FetchedDatapoint) c
-    , getIndicator "EN.ATM.CO2E.PC" (Result.map CO2PerCapita >> FetchedDatapoint) c
+    , getIndicator "SP.RUR.TOTL.ZS" RuralPopulation c
+    , getIndicator "SE.PRM.ENRR" SchoolEnrolment c
+    , getIndicator "EN.ATM.CO2E.PC" CO2PerCapita c
     , getPoliticalData c
     ]
 
@@ -138,9 +138,9 @@ fetchName c = Http.get {
        expect = Http.expectJson (Result.map Name >> FetchedDatapoint) nameDecoder
    }
 
-getIndicator indicator toMsg cc = Http.get {
+getIndicator indicator toDP cc = Http.get {
          url = "http://api.worldbank.org/v2/country/" ++ (Country.asIso2 cc) ++ "/indicator/"++ indicator ++"?format=json",
-         expect = Http.expectJson toMsg indicatorDecoder
+         expect = Http.expectJson (Result.map toDP >> FetchedDatapoint) indicatorDecoder
      }
 
 getPoliticalData cc = Http.get {
