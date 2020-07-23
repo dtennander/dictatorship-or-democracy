@@ -1,8 +1,9 @@
-# Elm App
+# Dictatorship or Democracy?
 
-This project is bootstrapped with [Create Elm App](https://github.com/halfzebra/create-elm-app).
+A small game made to explore Elm and its architecture 😁 🎉!
 
-Below you will find some information on how to perform basic tasks.
+The project is bootstrapped with [Create Elm App](https://github.com/halfzebra/create-elm-app)
+and below you will find some information on how to perform basic tasks.
 You can find the most recent version of this guide [here](https://github.com/halfzebra/create-elm-app/blob/master/template/README.md).
 
 ## Table of Contents
