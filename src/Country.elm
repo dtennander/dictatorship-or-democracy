@@ -10,7 +10,8 @@ Returns a Country if it is a valid code and Nothing otherwise.
 -}
 parse : String -> Maybe Country
 parse = String.toList >> \l -> case l of
-    [a,b] -> Just <| CountryCode a b
+    [a,b] -> let cc = CountryCode a b
+             in (if asIso3 cc /= "unknown..." then Just cc else Nothing)
     _ -> Nothing
 
 {-| Generates the ISO 2 Country code for a given country.

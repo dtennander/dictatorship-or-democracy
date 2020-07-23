@@ -6,12 +6,14 @@ import Html exposing (..)
 import Html.Events exposing (onClick)
 import Http
 import Json.Decode as Decode exposing (field, index)
+import Random
 import String exposing (fromFloat, fromInt, toInt)
 
 ---- MODEL ----
-type Model = Valid Country Data | Invalid | Result Bool
+type Model = HasCountry Data | AwaitingCountry | Result String Bool
 
 type alias Data = {
+        country: Country,
         name: Maybe String,
         government: Maybe Answer,
         ruralPopulation: Maybe (Year, Float),
@@ -20,22 +22,22 @@ type alias Data = {
         lastFetchError: Maybe Http.Error
     }
 
-init: String -> (Model, Cmd Msg)
-init cc = case Country.parse cc of
-        Nothing -> (Invalid, Cmd.none)
-        Just c -> (
-                Valid c {
-                    name = Nothing,
-                    lastFetchError = Nothing,
-                    ruralPopulation = Nothing,
-                    schoolEnrolment = Nothing,
-                    co2PerCapita = Nothing,
-                    government = Nothing},
-                 fetchAll c)
+emptyDataset c =  {
+   country = c,
+   name = Nothing,
+   lastFetchError = Nothing,
+   ruralPopulation = Nothing,
+   schoolEnrolment = Nothing,
+   co2PerCapita = Nothing,
+   government = Nothing}
+
+init: (Model, Cmd Msg)
+init = (AwaitingCountry, getRandomCountry)
 
 ---- UPDATE ----
 type Msg =
-    FetchedDatapoint (Result Http.Error DataPoint)
+    PickedCountry Country
+    | FetchedDatapoint (Result Http.Error DataPoint)
     | GotAnswer Answer
 
 type Answer = Dictatorship | Democracy
@@ -56,18 +58,20 @@ type FreedomStatus =
 
 update: Msg -> Model -> (Model, Cmd Msg)
 update msg model = case (model, msg) of
-    (Valid c d, FetchedDatapoint (Ok dp)) ->
-        (Valid c (updateData dp d), Cmd.none)
-    (Valid c d, FetchedDatapoint (Err e)) ->
-        (Valid c {d | lastFetchError = Just (Debug.log "error" e)}, Cmd.none)
-    (Valid _ d, GotAnswer answer) ->
-        case d.government of
-            Just g -> (Result (g == answer), Cmd.none)
-            Nothing -> (model, Cmd.none)
+    (AwaitingCountry, PickedCountry c) ->
+        (HasCountry <| emptyDataset c, fetchAll c)
+    (HasCountry d, FetchedDatapoint (Ok dp)) ->
+        (HasCountry (updateDateSet dp d), Cmd.none)
+    (HasCountry d, FetchedDatapoint (Err e)) ->
+        (HasCountry {d | lastFetchError = Just (Debug.log "error" e)}, Cmd.none)
+    (HasCountry d, GotAnswer answer) ->
+        case (d.government, d.name) of
+            (Just g, Just n) -> (Result n (g == answer), Cmd.none)
+            _ -> (model, Cmd.none)
     (_, _) -> (model, Cmd.none)
 
-updateData : DataPoint -> Data -> Data
-updateData dp d = case dp of
+updateDateSet : DataPoint -> Data -> Data
+updateDateSet dp d = case dp of
     Name n -> {d | name = Just n}
     RuralPopulation v -> {d | ruralPopulation = Just v}
     SchoolEnrolment v -> {d | schoolEnrolment = Just v}
@@ -80,10 +84,17 @@ updateData dp d = case dp of
 
 view: Model -> Html Msg
 view m = case m of
-    Valid _ d -> viewValid d
-    Invalid -> h1 [] [text "No country could be parsed from the given Country Code"]
-    Result True -> h1 [] [text "Congratulations, you where correct!"]
-    Result False -> h1 [] [text "That was unfortunately incorrect..."]
+    HasCountry d -> viewValid d
+    AwaitingCountry -> h1 [] [text "Picking Country..."]
+    Result c True -> div [] [
+            h1 [] [text "Congratulations, you where correct!!"],
+            h3 [] [text <| "The country was " ++ c ++ "!"]
+        ]
+    Result c False -> div [] [
+            h1 [] [text "That was unfortunately incorrect..."],
+            h3 [] [text <| "The country was " ++ c ++ "!"]
+        ]
+
 
 viewValid: Data -> Html Msg
 viewValid d = div [] [
@@ -102,6 +113,17 @@ viewStat txt value = h2 [] [text (txt ++ ": " ++ (value |> Maybe.map viewDatapoi
 viewDatapoint (y, v) = fromFloat v ++ " (" ++ fromInt y ++ ")"
 
 ---- ACTIONS ----
+
+getRandomCountry = Random.generate PickedCountry randomCountry
+
+randomCountry : Random.Generator Country
+randomCountry =
+    Random.map2 (\a b -> String.fromList [a, b]) randomChar randomChar
+        |> Random.andThen (\s -> case Country.parse s of
+            Just c -> Random.constant c
+            Nothing -> randomCountry)
+
+randomChar = Random.int (Char.toCode 'A') (Char.toCode 'Z') |> Random.map Char.fromCode
 
 fetchAll c = Cmd.batch
     [ fetchName c

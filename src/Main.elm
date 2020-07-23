@@ -16,7 +16,7 @@ type Model =
 init : {country: String, showDash: Bool} -> ( Model, Cmd Msg )
 init flags = if flags.showDash
     then (StartPage flags.country, Cmd.none)
-    else Question.init flags.country
+    else Question.init
         |> updateWith Question GotQuestionMsg
 
 
@@ -29,7 +29,7 @@ type Msg
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model = case (model, msg) of
     (StartPage c, StartGame) ->
-        Question.init c
+        Question.init
             |> updateWith Question GotQuestionMsg
     (Question question, GotQuestionMsg qMsg) ->
         Question.update qMsg question
