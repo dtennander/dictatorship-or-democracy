@@ -1,4 +1,4 @@
-module API.Codes exposing (Country, parseCountryCode, iso2Code, iso3Code)
+module Country exposing (Country, parse, asIso2, asIso3)
 
 {-| Represents one country on Earth.
 Is created by using parseCountryCode.
@@ -8,18 +8,18 @@ type Country = CountryCode Char Char
 {-|Parses a string as an ISO2 country code.
 Returns a Country if it is a valid code and Nothing otherwise.
 -}
-parseCountryCode : String -> Maybe Country
-parseCountryCode = String.toList >> \l -> case l of
+parse : String -> Maybe Country
+parse = String.toList >> \l -> case l of
     [a,b] -> Just <| CountryCode a b
     _ -> Nothing
 
 {-| Generates the ISO 2 Country code for a given country.
 -}
-iso2Code : Country -> String
-iso2Code (CountryCode a b) = String.fromList [a,b]
+asIso2 : Country -> String
+asIso2 (CountryCode a b) = String.fromList [a,b]
 
-iso3Code : Country -> String
-iso3Code c = case iso2Code c of
+asIso3 : Country -> String
+asIso3 c = case asIso2 c of
     "AF" -> "AFG"
     "AL" -> "ALB"
     "DZ" -> "DZA"

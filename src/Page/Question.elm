@@ -1,7 +1,7 @@
 module Page.Question exposing (view, Model, init, update, Msg)
 
-import API.Codes exposing (Country, parseCountryCode)
 import API.Countries exposing (FreedomStatus(..), Time(..), getCO2PerCapita, getCountryName, getCountryRuralPop, getPoliticalData, getSchoolEnrolment)
+import Country exposing (Country)
 import Debug
 import Html exposing (..)
 import Html.Events exposing (onClick)
@@ -13,32 +13,25 @@ type Model = Valid Country Data | Invalid | Result Bool
 
 type alias Data = {
         name: Maybe String,
+        government: Maybe Answer,
         ruralPopulation: Maybe (Year, Float),
         schoolEnrolment: Maybe (Year, Float),
         co2PerCapita: Maybe (Year, Float),
-        government: Maybe Answer,
         lastFetchError: Maybe Http.Error
     }
 
 init: String -> (Model, Cmd Msg)
-init cc =
-    let baseModel = {
-            name = Nothing,
-            lastFetchError = Nothing,
-            ruralPopulation = Nothing,
-            schoolEnrolment = Nothing,
-            co2PerCapita = Nothing,
-            government = Nothing
-            }
-    in case parseCountryCode cc of
-        Just c -> (Valid c baseModel, Cmd.batch [
-                fetchName c,
-                fetchRuralPopulation c,
-                fetchSchoolEnrolment c,
-                fetchCo2 c,
-                fetchFreedomStatus c
-            ])
+init cc = case Country.parse cc of
         Nothing -> (Invalid, Cmd.none)
+        Just c -> (
+                Valid c {
+                    name = Nothing,
+                    lastFetchError = Nothing,
+                    ruralPopulation = Nothing,
+                    schoolEnrolment = Nothing,
+                    co2PerCapita = Nothing,
+                    government = Nothing},
+                 fetchAll c)
 
 
 -- UPDATE
@@ -47,6 +40,10 @@ type Msg =
     | FetchedDatapoint Datapoint
     | GotAnswer Answer
 
+type Answer = Dictatorship | Democracy
+
+type alias Year = Int
+
 type Datapoint =
       Name String
     | RuralPopulation Year Float
@@ -54,16 +51,12 @@ type Datapoint =
     | CO2PerCapita Year Float
     | FreedomStatus FreedomStatus
 
-type alias Year = Int
-
-type Answer = Dictatorship | Democracy
-
 update: Msg -> Model -> (Model, Cmd Msg)
 update msg model = case (model, msg) of
     (Valid c d, FetchedDatapoint dp) ->
         (Valid c (updateData dp d), Cmd.none)
-    (Valid c m, FailedToFetch e) ->
-        (Valid c {m | lastFetchError = Just (Debug.log "error" e)}, Cmd.none)
+    (Valid c d, FailedToFetch e) ->
+        (Valid c {d | lastFetchError = Just (Debug.log "error" e)}, Cmd.none)
     (Valid _ d, GotAnswer answer) ->
         case d.government of
             Just g -> (Result (g == answer), Cmd.none)
@@ -79,6 +72,7 @@ updateData dp d = case dp of
     FreedomStatus NotFree -> {d | government = Just Dictatorship}
     FreedomStatus _ -> {d | government = Just Democracy}
 
+
 -- VIEW
 
 view: Model -> Html Msg
@@ -89,17 +83,11 @@ view m = case m of
     Result False -> h1 [] [text "That was unfortunately incorrect..."]
 
 viewValid: Data -> Html Msg
-viewValid d =
-    let
-        toString (y, v) = fromFloat v ++ " (" ++ fromInt y ++ ")"
-        stat txt value = h2 [] [
-                text (txt ++ ": " ++ (value |> Maybe.map toString |> Maybe.withDefault "???"))
-            ]
-    in div [] [
+viewValid d = div [] [
         h1 [] [text "Country Details"],
-        stat "Rural Population [%]" d.ruralPopulation,
-        stat "School Enrolment [%]" d.schoolEnrolment,
-        stat "CO2 releases per Capita [Ton]" d.co2PerCapita,
+        viewStat "Rural Population [%]" d.ruralPopulation,
+        viewStat "School Enrolment [%]" d.schoolEnrolment,
+        viewStat "CO2 releases per Capita [Ton]" d.co2PerCapita,
         h1 [] [text "Is it a Dictatorship or Democracy?"],
         div [] [
             button [onClick <| GotAnswer Dictatorship] [text "Dictatorship!"],
@@ -107,19 +95,26 @@ viewValid d =
         ]
     ]
 
+viewStat txt value = h2 [] [text (txt ++ ": " ++ (value |> Maybe.map viewDatapoint |> Maybe.withDefault "???"))]
+viewDatapoint (y, v) = fromFloat v ++ " (" ++ fromInt y ++ ")"
+
 -- ACTIONS
+
+fetchAll c = Cmd.batch
+    [ fetchName c
+    , fetchWith getCountryRuralPop (headMap RuralPopulation) c
+    , fetchWith getSchoolEnrolment (headMap SchoolEnrolment) c
+    , fetchWith getCO2PerCapita (headMap CO2PerCapita) c
+    , fetchWith (always getPoliticalData) (FreedomStatus >> Just) c
+    ]
+
 fetchName = getCountryName <|
     \r -> case r of
         Ok name -> FetchedDatapoint (Name name)
         Err e -> FailedToFetch e
 
-fetchRuralPopulation = fetchWith getCountryRuralPop (asSingleDatapoint RuralPopulation)
-fetchSchoolEnrolment = fetchWith getSchoolEnrolment (asSingleDatapoint SchoolEnrolment)
-fetchCo2 = fetchWith getCO2PerCapita (asSingleDatapoint CO2PerCapita)
-fetchFreedomStatus = fetchWith (always getPoliticalData) (FreedomStatus >> Just)
-
-asSingleDatapoint : (a -> b -> c) -> List (a, b) -> Maybe c
-asSingleDatapoint f = List.head >> Maybe.map (\(a,b) -> f a b)
+headMap : (a -> b -> c) -> List (a, b) -> Maybe c
+headMap f = List.head >> Maybe.map (\(a,b) -> f a b)
 
 type alias Fetcher a = Time -> (Result Http.Error a -> Msg) -> Country -> Cmd Msg
 

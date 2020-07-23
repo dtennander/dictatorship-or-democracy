@@ -5,17 +5,17 @@ module API.Countries exposing (
     getCountryRuralPop
  , getSchoolEnrolment, getCO2PerCapita, getPoliticalData, FreedomStatus(..))
 
-import API.Codes exposing (Country, iso2Code, iso3Code)
 import Http
 import Json.Decode as Decode exposing (Decoder, field, float, index, int, list, maybe, string)
 import String exposing (toInt)
+import Country exposing (Country)
 
 {-| Command that queries the World Bank for the full name of a Country.
     Takes a Message constructor that wll construct the sent message.
 -}
 getCountryName : (Result Http.Error String -> m) -> Country -> Cmd m
 getCountryName toMsg cc = Http.get {
-        url = "http://api.worldbank.org/v2/country/" ++ (iso2Code cc) ++ "?format=json",
+        url = "http://api.worldbank.org/v2/country/" ++ (Country.asIso2 cc) ++ "?format=json",
         expect = Http.expectJson toMsg
             (index 1 <| index 0 <| field "name" string)
     }
@@ -54,7 +54,7 @@ getIndicator indicator t toMsg cc =
             Exact year -> List.filter (\(y,_) -> y == year) >> gatherValues
             Range from to -> List.filter (\(y,_) -> from <= y && y <= to) >> gatherValues
     in Http.get {
-         url = "http://api.worldbank.org/v2/country/" ++ (iso2Code cc) ++ "/indicator/"++ indicator ++"?format=json",
+         url = "http://api.worldbank.org/v2/country/" ++ (Country.asIso2 cc) ++ "/indicator/"++ indicator ++"?format=json",
          expect = Http.expectJson (Result.map filter >> toMsg)
              (index 1 <| list <| Decode.map2 (\a b -> (a, b)) decodeYear (maybe <| field "value" float))
      }
@@ -73,7 +73,7 @@ getPoliticalData toMsg cc =
             3 -> Ok Free
             _ -> Err <| Http.BadBody "Could not parse freedom status"
     in Http.get {
-        url = ("https://tcdata360-backend.worldbank.org/api/v1/data?indicators=40987&countries=" ++ (iso3Code cc)),
+        url = ("https://tcdata360-backend.worldbank.org/api/v1/data?indicators=40987&countries=" ++ (Country.asIso3 cc)),
         expect = Http.expectJson (Result.andThen toStatus >> toMsg)
             (field "data"
             <| index 0
