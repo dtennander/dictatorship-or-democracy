@@ -1,7 +1,7 @@
 module Main exposing (..)
 
 import Browser
-import Html exposing (Html, text, div, h1)
+import Html exposing (Html)
 import Page.Question as Question
 import Page.StartPage as StartPage
 

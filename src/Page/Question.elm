@@ -1,14 +1,14 @@
 module Page.Question exposing (view, Model, init, update, Msg)
 
-import API.Countries exposing (FreedomStatus(..), Time(..), getCO2PerCapita, getCountryName, getCountryRuralPop, getPoliticalData, getSchoolEnrolment)
 import Country exposing (Country)
 import Debug
 import Html exposing (..)
 import Html.Events exposing (onClick)
 import Http
-import String exposing (fromFloat, fromInt)
+import Json.Decode as Decode exposing (field, index)
+import String exposing (fromFloat, fromInt, toInt)
 
--- MODEL
+---- MODEL ----
 type Model = Valid Country Data | Invalid | Result Bool
 
 type alias Data = {
@@ -33,29 +33,32 @@ init cc = case Country.parse cc of
                     government = Nothing},
                  fetchAll c)
 
-
--- UPDATE
+---- UPDATE ----
 type Msg =
-      FailedToFetch Http.Error
-    | FetchedDatapoint Datapoint
+    FetchedDatapoint (Result Http.Error DataPoint)
     | GotAnswer Answer
 
 type Answer = Dictatorship | Democracy
 
+type DataPoint =
+      Name String
+    | RuralPopulation (Year, Float)
+    | SchoolEnrolment (Year, Float)
+    | CO2PerCapita (Year, Float)
+    | FreedomStatus FreedomStatus
+
 type alias Year = Int
 
-type Datapoint =
-      Name String
-    | RuralPopulation Year Float
-    | SchoolEnrolment Year Float
-    | CO2PerCapita Year Float
-    | FreedomStatus FreedomStatus
+type FreedomStatus =
+    Free
+    | PartlyFree
+    | NotFree
 
 update: Msg -> Model -> (Model, Cmd Msg)
 update msg model = case (model, msg) of
-    (Valid c d, FetchedDatapoint dp) ->
+    (Valid c d, FetchedDatapoint (Ok dp)) ->
         (Valid c (updateData dp d), Cmd.none)
-    (Valid c d, FailedToFetch e) ->
+    (Valid c d, FetchedDatapoint (Err e)) ->
         (Valid c {d | lastFetchError = Just (Debug.log "error" e)}, Cmd.none)
     (Valid _ d, GotAnswer answer) ->
         case d.government of
@@ -63,17 +66,17 @@ update msg model = case (model, msg) of
             Nothing -> (model, Cmd.none)
     (_, _) -> (model, Cmd.none)
 
-updateData : Datapoint -> Data -> Data
+updateData : DataPoint -> Data -> Data
 updateData dp d = case dp of
     Name n -> {d | name = Just n}
-    RuralPopulation y v -> {d | ruralPopulation = Just (y,v)}
-    SchoolEnrolment y v -> {d | schoolEnrolment = Just (y,v)}
-    CO2PerCapita y v -> {d | co2PerCapita = Just (y,v)}
+    RuralPopulation v -> {d | ruralPopulation = Just v}
+    SchoolEnrolment v -> {d | schoolEnrolment = Just v}
+    CO2PerCapita v -> {d | co2PerCapita = Just v}
     FreedomStatus NotFree -> {d | government = Just Dictatorship}
     FreedomStatus _ -> {d | government = Just Democracy}
 
 
--- VIEW
+---- VIEW ----
 
 view: Model -> Html Msg
 view m = case m of
@@ -98,30 +101,57 @@ viewValid d = div [] [
 viewStat txt value = h2 [] [text (txt ++ ": " ++ (value |> Maybe.map viewDatapoint |> Maybe.withDefault "???"))]
 viewDatapoint (y, v) = fromFloat v ++ " (" ++ fromInt y ++ ")"
 
--- ACTIONS
+---- ACTIONS ----
 
 fetchAll c = Cmd.batch
     [ fetchName c
-    , fetchWith getCountryRuralPop (headMap RuralPopulation) c
-    , fetchWith getSchoolEnrolment (headMap SchoolEnrolment) c
-    , fetchWith getCO2PerCapita (headMap CO2PerCapita) c
-    , fetchWith (always getPoliticalData) (FreedomStatus >> Just) c
+    , getIndicator "SP.RUR.TOTL.ZS" (Result.map RuralPopulation >> FetchedDatapoint) c
+    , getIndicator "SE.PRM.ENRR" (Result.map SchoolEnrolment >> FetchedDatapoint) c
+    , getIndicator "EN.ATM.CO2E.PC" (Result.map CO2PerCapita >> FetchedDatapoint) c
+    , getPoliticalData c
     ]
 
-fetchName = getCountryName <|
-    \r -> case r of
-        Ok name -> FetchedDatapoint (Name name)
-        Err e -> FailedToFetch e
+fetchName c = Http.get {
+       url = "http://api.worldbank.org/v2/country/" ++ (Country.asIso2 c) ++ "?format=json",
+       expect = Http.expectJson (Result.map Name >> FetchedDatapoint) nameDecoder
+   }
 
-headMap : (a -> b -> c) -> List (a, b) -> Maybe c
-headMap f = List.head >> Maybe.map (\(a,b) -> f a b)
+getIndicator indicator toMsg cc = Http.get {
+         url = "http://api.worldbank.org/v2/country/" ++ (Country.asIso2 cc) ++ "/indicator/"++ indicator ++"?format=json",
+         expect = Http.expectJson toMsg indicatorDecoder
+     }
 
-type alias Fetcher a = Time -> (Result Http.Error a -> Msg) -> Country -> Cmd Msg
+getPoliticalData cc = Http.get {
+        url = ("https://tcdata360-backend.worldbank.org/api/v1/data?indicators=40987&countries=" ++ (Country.asIso3 cc)),
+        expect = Http.expectJson (Result.map FreedomStatus >> FetchedDatapoint) politicalFreedomDecoder
+     }
 
-fetchWith: Fetcher a-> (a -> Maybe Datapoint) -> Country -> Cmd Msg
-fetchWith fetcher toDataPoint = fetcher Latest <|
-    \r -> case r of
-       Ok a -> case toDataPoint a of
-          Just dp -> FetchedDatapoint dp
-          Nothing -> FailedToFetch (Http.BadBody "Could not transform result to Datapoint")
-       Err e -> FailedToFetch e
+---- DECODERS ----
+nameDecoder = index 1 <| index 0 <| field "name" Decode.string
+indicatorDecoder = index 1 decodeLatestYear
+decodeLatestYear =
+    let
+        takeFirst = List.sortBy Tuple.first
+            >> List.reverse
+            >> List.head
+            >> Maybe.map Decode.succeed
+            >> Maybe.withDefault (Decode.fail "No data found for any year...")
+    in Decode.list decodeDatapoint |> Decode.map (List.filterMap identity) |> Decode.andThen takeFirst
+
+decodeDatapoint = Decode.maybe <| Decode.map2 Tuple.pair decodeYear (field "value" Decode.float)
+decodeYear = field "date" Decode.string |> Decode.map (toInt >> Maybe.withDefault 0)
+
+politicalFreedomDecoder = field "data"
+                          <| index 0
+                          <| field "indicators"
+                          <| index 0
+                          <| field "values"
+                          <| field "2018" statusDecoder
+
+statusDecoder =
+    let asStatus i = case i // 10000 of
+         1 -> Decode.succeed NotFree
+         2 -> Decode.succeed PartlyFree
+         3 -> Decode.succeed Free
+         _ -> Decode.fail    "Could not parse freedom status"
+    in Decode.int |> Decode.andThen asStatus
